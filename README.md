@@ -11,15 +11,15 @@ Share a Wi-Fi hotspot from your Linux laptop without dropping your current Wi-Fi
 
 ## Requirements
 
-Install `create_ap`, `nmcli`, `iw`, and `pkexec` on `PATH`.
+Install `create_ap`, `nmcli`, `iw`, `ip`, and `pkexec` on `PATH`.
 
 - Arch Linux:
   ```sh
-  yay -S create_ap
+  yay -S create_ap iproute2
   ```
 - Debian / Ubuntu:
   ```sh
-  sudo apt install create_ap network-manager iw policykit-1
+  sudo apt install create_ap network-manager iw iproute2 policykit-1
   ```
 
 ### Optional: Passwordless Hotspot

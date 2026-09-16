@@ -16,7 +16,13 @@ run_root() {
 }
 
 stop_hotspot() {
-    # Stop create_ap instance for ap0
+    # Send SIGUSR1 directly to create_ap PIDs for immediate graceful exit
+    local pids
+    pids=$(pgrep -f "create_ap.*(wlan0|ap0)" 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+        run_root kill -USR1 $pids >/dev/null 2>&1 || true
+    fi
+
     if iw dev ap0 info >/dev/null 2>&1 || pgrep -f "create_ap.*(wlan0|ap0)" >/dev/null 2>&1; then
         run_root create_ap --stop ap0 >/dev/null 2>&1 || true
     fi
@@ -127,7 +133,8 @@ case "$ACTION" in
         else
             ERR_MSG=$(echo "$OUTPUT" | grep -i "ERROR:" | head -n1)
             [ -z "$ERR_MSG" ] && ERR_MSG="$OUTPUT"
-            echo "{\"error\": $(printf '%s' "$ERR_MSG" | jq -R .)}" >&2
+            ERR_CLEAN=$(printf '%s' "$ERR_MSG" | tr -d '\n\r' | sed 's/\\/\\\\/g; s/"/\\"/g')
+            echo "{\"error\": \"$ERR_CLEAN\"}" >&2
             exit $EXIT_CODE
         fi
         ;;

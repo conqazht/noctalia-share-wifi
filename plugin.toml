@@ -7,7 +7,7 @@ license     = "MIT"
 icon        = "access-point"
 description = "Share WiFi hotspot without losing laptop connection, with auto-detected channel and client limits."
 tags        = ["network", "bar", "panel", "utility", "system", "indicator"]
-dependencies = ["create_ap", "nmcli", "iw", "pkexec"]
+dependencies = ["create_ap", "nmcli", "iw", "ip", "pkexec"]
 
 [[widget]]
 id    = "widget"
