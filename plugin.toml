@@ -16,7 +16,6 @@ entry = "widget.luau"
 [[panel]]
 id        = "panel"
 entry     = "panel.luau"
-title     = "Share WiFi"
 width     = 350
 height    = 465
 placement = "attached"
@@ -26,5 +25,3 @@ open_near_click = true
 [[shortcut]]
 id        = "shortcut"
 entry     = "shortcut.luau"
-label_key = "shortcut.label"
-icon      = "access-point"

@@ -1,3 +1,5 @@
 {
-  "shortcut.label": "Share WiFi"
+  "shortcut": {
+    "label": "Share WiFi"
+  }
 }
