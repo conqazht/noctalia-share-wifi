@@ -16,6 +16,8 @@ Install `create_ap`, `nmcli`, `iw`, `ip`, and `pkexec` on `PATH`.
 - Arch Linux:
   ```sh
   yay -S create_ap iproute2
+  # or with paru:
+  paru -S create_ap iproute2
   ```
 - Debian / Ubuntu:
   ```sh
