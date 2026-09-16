@@ -1,0 +1,364 @@
+-- panel.luau
+-- Popup configuration panel for Share WiFi
+
+local helperPath = noctalia.pluginDir() .. "/helper.sh"
+local configPath = noctalia.pluginDataDir() .. "/config.json"
+
+local state = {
+  ssid = "MyHotspot",
+  password = "password123",
+  band = "5Ghz",          -- "Auto", "5Ghz", "2.4Ghz"
+  channel = "40",         -- e.g. "40"
+  useChannel = true,      -- checkbox like in screenshot
+  maxClients = 2,         -- default 2, strictly 1-8 (no unlimited)
+  active = false,
+  clients = 0,
+  detecting = false,
+  statusMessage = "Ready",
+  autoDetectedInfo = ""
+}
+
+-- Load saved config if exists
+local function loadSavedConfig()
+  local raw = noctalia.readFile(configPath)
+  if raw then
+    local data = noctalia.json.decode(raw)
+    if data then
+      if data.ssid and data.ssid ~= "" then state.ssid = data.ssid end
+      if data.password and data.password ~= "" then state.password = data.password end
+      if data.band and data.band ~= "" then state.band = data.band end
+      if data.channel and data.channel ~= "" then state.channel = data.channel end
+      if data.useChannel ~= nil then state.useChannel = data.useChannel end
+      if data.maxClients ~= nil then
+        local mc = tonumber(data.maxClients) or 2
+        if mc < 1 then mc = 2 end
+        if mc > 8 then mc = 8 end
+        state.maxClients = mc
+      else
+        state.maxClients = 2
+      end
+    end
+  else
+    -- Pre-populate from /etc/create_ap.conf if available
+    local apConf = noctalia.readFile("/etc/create_ap.conf")
+    if apConf then
+      local ssid = apConf:match("SSID=([^\n]+)")
+      local pass = apConf:match("PASSPHRASE=([^\n]+)")
+      local chan = apConf:match("CHANNEL=([^\n]+)")
+      local band = apConf:match("FREQ_BAND=([^\n]+)")
+      if ssid and ssid ~= "" then state.ssid = ssid end
+      if pass and pass ~= "" then state.password = pass end
+      if chan and chan ~= "" and chan ~= "0" then state.channel = chan end
+      if band == "5" then state.band = "5Ghz" elseif band == "2.4" then state.band = "2.4Ghz" end
+    end
+  end
+end
+
+local function saveConfig()
+  noctalia.writeFile(configPath, noctalia.json.encode({
+    ssid = state.ssid,
+    password = state.password,
+    band = state.band,
+    channel = state.channel,
+    useChannel = state.useChannel,
+    maxClients = state.maxClients
+  }))
+end
+
+-- Auto-detect Wi-Fi band & channel from current connection
+local function autoDetect(callback)
+  state.detecting = true
+  render()
+
+  noctalia.runAsync(helperPath .. " detect", function(res)
+    state.detecting = false
+    if res.exitCode == 0 and res.stdout ~= "" then
+      local data = noctalia.json.decode(res.stdout)
+      if data then
+        if data.connected then
+          state.band = data.band or "5Ghz"
+          state.channel = data.channel or "40"
+          state.autoDetectedInfo = string.format("Detected Wi-Fi: %s (ch %s)", state.band, state.channel)
+          state.statusMessage = "Synced with connected Wi-Fi"
+        else
+          state.autoDetectedInfo = "No active Wi-Fi (Ethernet mode)"
+          state.band = "2.4Ghz"
+          state.channel = "6"
+        end
+        saveConfig()
+      end
+    end
+    render()
+    if callback then callback() end
+  end)
+end
+
+-- Refresh running status
+local function checkStatus(callback)
+  noctalia.runAsync(helperPath .. " status", function(res)
+    if res.exitCode == 0 and res.stdout ~= "" then
+      local data = noctalia.json.decode(res.stdout)
+      if data then
+        state.active = (data.active == true)
+        state.clients = tonumber(data.clients) or 0
+        noctalia.state.set("share_wifi_status", {
+          active = state.active,
+          clients = state.clients
+        })
+      end
+    end
+    render()
+    if callback then callback() end
+  end)
+end
+
+function render()
+  panel.render(ui.column({ gap = 10, padding = 16 }, {
+    -- Header
+    ui.row({ align = "center", justify = "space_between" }, {
+      ui.row({ gap = 8, align = "center" }, {
+        ui.glyph({ name = "access-point", size = 20, color = state.active and "primary" or "on_surface" }),
+        ui.label({ text = "Share WiFi", fontSize = 16, fontWeight = "bold" })
+      }),
+      ui.row({
+        fill = state.active and "primary/0.2" or "surface_variant/0.5",
+        radius = 6,
+        paddingH = 8,
+        paddingV = 4,
+        align = "center"
+      }, {
+        ui.label({
+          text = if state.active
+            then string.format("ACTIVE (%d/%d connected)", state.clients, state.maxClients)
+            else "OFF",
+          fontSize = 11,
+          fontWeight = "bold",
+          color = state.active and "primary" or "on_surface/0.5"
+        })
+      })
+    }),
+
+    ui.separator({ spacing = 2 }),
+
+    -- SSID Input
+    ui.column({ gap = 4 }, {
+      ui.label({ text = "Network Name (SSID)", fontSize = 12, color = "on_surface/0.7" }),
+      ui.input({
+        key = "field_ssid",
+        value = state.ssid,
+        placeholder = "Hotspot SSID",
+        enabled = not state.active,
+        onChange = function(val)
+          state.ssid = val
+          saveConfig()
+        end
+      })
+    }),
+
+    -- Password Input
+    ui.column({ gap = 4 }, {
+      ui.label({ text = "Password (min 8 chars)", fontSize = 12, color = "on_surface/0.7" }),
+      ui.input({
+        key = "field_password",
+        value = state.password,
+        placeholder = "Hotspot password",
+        enabled = not state.active,
+        onChange = function(val)
+          state.password = val
+          saveConfig()
+        end
+      })
+    }),
+
+    ui.separator({ spacing = 2 }),
+
+    -- Dòng 1: Frequency band (khớp với hình người dùng gửi)
+    ui.column({ gap = 6 }, {
+      ui.row({ align = "center", justify = "space_between" }, {
+        ui.label({ text = "Frequency band", fontSize = 12, fontWeight = "medium" }),
+        ui.row({ gap = 4 }, {
+          ui.button({
+            key = "band_auto",
+            text = "Auto",
+            controlSize = "sm",
+            variant = state.band == "Auto" and "primary" or "ghost",
+            enabled = not state.active,
+            onClick = function()
+              state.band = "Auto"
+              saveConfig()
+              render()
+            end
+          }),
+          ui.button({
+            key = "band_5g",
+            text = "5Ghz",
+            controlSize = "sm",
+            variant = state.band == "5Ghz" and "primary" or "ghost",
+            enabled = not state.active,
+            onClick = function()
+              state.band = "5Ghz"
+              saveConfig()
+              render()
+            end
+          }),
+          ui.button({
+            key = "band_24g",
+            text = "2.4Ghz",
+            controlSize = "sm",
+            variant = state.band == "2.4Ghz" and "primary" or "ghost",
+            enabled = not state.active,
+            onClick = function()
+              state.band = "2.4Ghz"
+              saveConfig()
+              render()
+            end
+          })
+        })
+      })
+    }),
+
+    -- Dòng 2: Channel
+    ui.row({ align = "center", justify = "space_between" }, {
+      ui.label({ text = "Channel", fontSize = 12, fontWeight = "medium" }),
+      ui.input({
+        key = "field_channel",
+        value = tostring(state.channel),
+        placeholder = "Auto",
+        width = 65,
+        controlSize = "sm",
+        enabled = not state.active,
+        onChange = function(val)
+          state.channel = val
+          saveConfig()
+        end
+      })
+    }),
+
+    -- Dòng 3: Max clients (Giới hạn người kết nối: 1 - 8)
+    ui.row({ align = "center", justify = "space_between" }, {
+      ui.label({ text = "Max clients (1 - 8)", fontSize = 12, fontWeight = "medium" }),
+      ui.input({
+        key = "field_max_clients",
+        value = tostring(state.maxClients),
+        placeholder = "2",
+        width = 65,
+        controlSize = "sm",
+        enabled = not state.active,
+        onChange = function(val)
+          local num = tonumber(val)
+          if num then
+            if num > 8 then
+              num = 8
+              noctalia.notify("Share WiFi", "Max clients is capped at 8")
+            elseif num < 1 then
+              num = 1
+            end
+            state.maxClients = num
+            saveConfig()
+          elseif val == "" then
+            state.maxClients = 2
+            saveConfig()
+          end
+        end
+      })
+    }),
+
+    -- Ghi chú auto-detect kèm nút làm mới
+    ui.row({ align = "center", justify = "space_between" }, {
+      ui.label({
+        text = state.autoDetectedInfo ~= "" and state.autoDetectedInfo or state.statusMessage,
+        fontSize = 11,
+        color = "on_surface/0.5"
+      }),
+      ui.button({
+        key = "btn_rescan",
+        glyph = "refresh",
+        glyphSize = 13,
+        variant = "ghost",
+        controlSize = "sm",
+        tooltip = "Auto-detect Band & Channel from current Wi-Fi",
+        enabled = not state.active,
+        onClick = function()
+          autoDetect(function()
+            noctalia.notify("Share WiFi", "Channel & Band synced!")
+          end)
+        end
+      })
+    }),
+
+    ui.spacer({ size = 4 }),
+
+    -- Nút Bật / Tắt Hotspot
+    ui.button({
+      key = "btn_toggle",
+      text = state.active and "Stop Hotspot" or "Start Hotspot",
+      variant = state.active and "destructive" or "primary",
+      onClick = function()
+        toggleHotspot()
+      end
+    })
+  }))
+end
+
+function toggleHotspot()
+  if state.active then
+    -- Optimistic instant UI update (no lag)
+    state.active = false
+    state.clients = 0
+    state.statusMessage = "Hotspot stopped"
+    noctalia.state.set("share_wifi_status", { active = false, clients = 0, maxClients = state.maxClients })
+    noctalia.notify("Share WiFi", "Hotspot turned off")
+    render()
+
+    noctalia.runAsync(helperPath .. " stop", function(res)
+      checkStatus()
+    end)
+  else
+    state.statusMessage = "Starting hotspot..."
+    render()
+
+    local bandArg = state.band
+    local chanArg = (state.channel and state.channel ~= "") and state.channel or "Auto"
+    local maxClientsArg = tostring(state.maxClients or 0)
+    local startCmd = string.format("%s start %q %q %q %q %q",
+      helperPath, state.ssid, state.password, bandArg, chanArg, maxClientsArg
+    )
+
+    noctalia.runAsync(startCmd, function(res)
+      if res.exitCode == 0 then
+        state.active = true
+        state.statusMessage = "Hotspot active (" .. state.band .. ", ch " .. state.channel .. ")"
+        noctalia.state.set("share_wifi_status", { active = true, clients = 0, maxClients = state.maxClients })
+        noctalia.notify("Share WiFi", "Hotspot started successfully!")
+      else
+        local errMsg = "Failed to start"
+        if res.stderr and res.stderr ~= "" then
+          local ok, parsed = pcall(function() return noctalia.json.decode(res.stderr) end)
+          if ok and parsed and parsed.error then
+            errMsg = parsed.error
+          else
+            errMsg = res.stderr
+          end
+        end
+        state.statusMessage = "Error: " .. errMsg
+        noctalia.notifyError("Share WiFi Error", errMsg)
+      end
+      checkStatus()
+    end)
+  end
+end
+
+function onOpen()
+  loadSavedConfig()
+  checkStatus(function()
+    if not state.active then
+      autoDetect()
+    else
+      render()
+    end
+  end)
+end
+
+-- Initial load
+loadSavedConfig()
+checkStatus()

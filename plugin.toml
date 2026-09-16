@@ -1,0 +1,30 @@
+id          = "conqazht/share-wifi"
+name        = "Share WiFi"
+version     = "1.0.0"
+plugin_api  = 3
+author      = "conqazht"
+license     = "MIT"
+icon        = "access-point"
+description = "Share WiFi hotspot without losing laptop connection, with auto-detected channel and client limits."
+tags        = ["network", "bar", "panel", "utility", "system", "indicator"]
+dependencies = ["create_ap", "nmcli", "iw", "pkexec"]
+
+[[widget]]
+id    = "widget"
+entry = "widget.luau"
+
+[[panel]]
+id        = "panel"
+entry     = "panel.luau"
+title     = "Share WiFi"
+width     = 350
+height    = 465
+placement = "attached"
+position  = "top_right"
+open_near_click = true
+
+[[shortcut]]
+id        = "shortcut"
+entry     = "shortcut.luau"
+label_key = "shortcut.label"
+icon      = "access-point"
