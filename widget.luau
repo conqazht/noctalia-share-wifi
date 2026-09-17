@@ -3,6 +3,14 @@
 
 local helperPath = noctalia.pluginDir() .. "/helper.sh"
 
+local function tr(key, args)
+  return noctalia.tr(key, args)
+end
+
+local function shEscape(str)
+  return "'" .. string.gsub(tostring(str), "'", "'\\''") .. "'"
+end
+
 noctalia.setUpdateInterval(3000)
 
 local status = {
@@ -65,7 +73,7 @@ local function renderWidget()
 end
 
 function update()
-  noctalia.runAsync(helperPath .. " status", function(res)
+  noctalia.runAsync(shEscape(helperPath) .. " status", function(res)
     if res.exitCode == 0 and res.stdout ~= "" then
       local data = noctalia.json.decode(res.stdout)
       if data then
@@ -88,8 +96,8 @@ function onRightClick()
     status.clients = 0
     noctalia.state.set("share_wifi_status", status)
     renderWidget()
-    noctalia.notify("Share WiFi", "Hotspot stopped")
-    noctalia.runAsync(helperPath .. " stop", function()
+    noctalia.notify(tr("panel.title"), tr("notify.stopped"))
+    noctalia.runAsync(shEscape(helperPath) .. " stop", function()
       update()
     end)
   else

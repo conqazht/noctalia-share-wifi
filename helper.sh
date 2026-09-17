@@ -2,6 +2,8 @@
 
 ACTION="${1:-status}"
 
+PID_FILE="/tmp/noctalia-share-wifi.pid"
+
 get_active_wifi() {
     nmcli -t -f active,chan,freq dev wifi list --rescan no 2>/dev/null | grep '^yes' | head -n1 || true
 }
@@ -16,29 +18,34 @@ run_root() {
 }
 
 stop_hotspot() {
-    # Send SIGUSR1 directly to create_ap PIDs for immediate graceful exit
-    local pids
-    pids=$(pgrep -f "create_ap.*(wlan0|ap0)" 2>/dev/null || true)
-    if [ -n "$pids" ]; then
-        run_root kill -USR1 $pids >/dev/null 2>&1 || true
+    local pid=""
+    if [ -f "$PID_FILE" ]; then
+        pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
     fi
 
-    if iw dev ap0 info >/dev/null 2>&1 || pgrep -f "create_ap.*(wlan0|ap0)" >/dev/null 2>&1; then
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        run_root create_ap --stop "$pid" >/dev/null 2>&1 || run_root kill -USR1 "$pid" >/dev/null 2>&1 || true
+
+        # Wait up to 0.5s for process to exit
+        local count=0
+        while kill -0 "$pid" 2>/dev/null && [ $count -lt 5 ]; do
+            sleep 0.1
+            count=$((count + 1))
+        done
+
+        if kill -0 "$pid" 2>/dev/null; then
+            run_root kill -9 "$pid" >/dev/null 2>&1 || true
+        fi
+    elif iw dev ap0 info >/dev/null 2>&1; then
         run_root create_ap --stop ap0 >/dev/null 2>&1 || true
     fi
 
-    # Quick check (up to 0.5s with 0.1s intervals)
-    local count=0
-    while iw dev ap0 info >/dev/null 2>&1 && [ $count -lt 5 ]; do
-        sleep 0.1
-        count=$((count + 1))
-    done
-
-    # Force cleanup if still stubborn
+    # Cleanup interface ap0 if still remaining
     if iw dev ap0 info >/dev/null 2>&1; then
-        run_root pkill -9 -f "create_ap.*(wlan0|ap0)" >/dev/null 2>&1 || true
         run_root iw dev ap0 del >/dev/null 2>&1 || true
     fi
+
+    rm -f "$PID_FILE" 2>/dev/null || true
 }
 
 case "$ACTION" in
@@ -62,13 +69,25 @@ case "$ACTION" in
         ;;
 
     status)
-        # Fast non-root status check via kernel wireless interface
+        local is_active=false
+        local client_count=0
+
+        if [ -f "$PID_FILE" ]; then
+            local pid
+            pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                is_active=true
+            fi
+        fi
+
         if iw dev ap0 info >/dev/null 2>&1; then
-            CLIENT_COUNT=$(iw dev ap0 station dump 2>/dev/null | grep -c "Station" || true)
-            CLIENT_COUNT=${CLIENT_COUNT:-0}
-            echo "{\"active\": true, \"device\": \"ap0\", \"clients\": $CLIENT_COUNT}"
-        elif pgrep -f "create_ap.*wlan0" >/dev/null 2>&1; then
-            echo '{"active": true, "device": "ap0", "clients": 0}'
+            is_active=true
+            client_count=$(iw dev ap0 station dump 2>/dev/null | grep -c "Station" || true)
+            client_count=${client_count:-0}
+        fi
+
+        if [ "$is_active" = true ]; then
+            echo "{\"active\": true, \"device\": \"ap0\", \"clients\": $client_count}"
         else
             echo '{"active": false, "clients": 0}'
         fi
@@ -96,11 +115,11 @@ case "$ACTION" in
         [ -z "$INET_IFACE" ] && INET_IFACE="wlan0"
 
         # If already running or ap0 exists, clean it up first
-        if iw dev ap0 info >/dev/null 2>&1 || pgrep -f "create_ap.*wlan0" >/dev/null 2>&1; then
+        if iw dev ap0 info >/dev/null 2>&1 || [ -f "$PID_FILE" ]; then
             stop_hotspot
         fi
 
-        CMD_ARGS=(--daemon wlan0 "$INET_IFACE" "$SSID" "$PASS")
+        CMD_ARGS=(--daemon --pidfile "$PID_FILE" wlan0 "$INET_IFACE" "$SSID" "$PASS")
 
         # Add channel if specified and valid
         if [ -n "$CHAN" ] && [ "$CHAN" != "Auto" ] && [ "$CHAN" != "default" ]; then

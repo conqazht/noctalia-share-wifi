@@ -24,13 +24,9 @@ Install `create_ap`, `nmcli`, `iw`, `ip`, and `pkexec` on `PATH`.
   sudo apt install create_ap network-manager iw iproute2 policykit-1
   ```
 
-### Optional: Passwordless Hotspot
+### Authentication & Permissions
 
-To start/stop hotspots from the bar without entering your password each time, add a sudoers rule:
-
-```sh
-echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/create_ap" | sudo tee /etc/sudoers.d/noctalia-share-wifi
-```
+Starting and stopping the hotspot requires root privileges to configure virtual wireless interfaces and manage `create_ap`. The plugin delegates privileged operations through **PolicyKit (`pkexec`)** by default, prompting for authentication via your desktop environment's graphical agent only when required.
 
 ## Usage
 
@@ -64,3 +60,4 @@ Add `shortcut` to your Control Center in Noctalia Settings for quick toggling.
 
 - **Simultaneous Wi-Fi & Hotspot**: Uses Linux kernel virtual interface `ap0` on top of your physical Wi-Fi interface (`wlan0`), allowing your laptop to remain connected to the internet while simultaneously sharing it.
 - **Client Limit**: Enforced at the 802.11 MAC management frame level via `hostapd` (`max_num_sta`).
+- **Configuration & Persistence**: Hotspot credentials and preferences (SSID, passphrase, frequency band, channel, max clients) are persisted in `config.json` inside the plugin's data directory upon starting the hotspot so they do not need to be re-entered. If no saved configuration exists on initial launch, defaults are pre-populated from `/etc/create_ap.conf` if present on the system.

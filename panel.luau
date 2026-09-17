@@ -4,6 +4,15 @@
 local helperPath = noctalia.pluginDir() .. "/helper.sh"
 local configPath = noctalia.pluginDataDir() .. "/config.json"
 
+local function tr(key, args)
+  return noctalia.tr(key, args)
+end
+
+local function shEscape(str)
+  -- POSIX single-quote escaping: wrap in ' and replace each ' with '\''
+  return "'" .. string.gsub(tostring(str), "'", "'\\''") .. "'"
+end
+
 local state = {
   ssid = "MyHotspot",
   password = "password123",
@@ -70,7 +79,7 @@ local function autoDetect(callback)
   state.detecting = true
   render()
 
-  noctalia.runAsync(helperPath .. " detect", function(res)
+  noctalia.runAsync(shEscape(helperPath) .. " detect", function(res)
     state.detecting = false
     if res.exitCode == 0 and res.stdout ~= "" then
       local data = noctalia.json.decode(res.stdout)
@@ -79,9 +88,9 @@ local function autoDetect(callback)
           state.band = data.band or "5Ghz"
           state.channel = data.channel or "40"
           state.autoDetectedInfo = string.format("Detected Wi-Fi: %s (ch %s)", state.band, state.channel)
-          state.statusMessage = "Synced with connected Wi-Fi"
+          state.statusMessage = tr("panel.synced_status")
         else
-          state.autoDetectedInfo = "No active Wi-Fi (Ethernet mode)"
+          state.autoDetectedInfo = tr("panel.no_wifi")
           state.band = "2.4Ghz"
           state.channel = "6"
         end
@@ -95,7 +104,7 @@ end
 
 -- Refresh running status
 local function checkStatus(callback)
-  noctalia.runAsync(helperPath .. " status", function(res)
+  noctalia.runAsync(shEscape(helperPath) .. " status", function(res)
     if res.exitCode == 0 and res.stdout ~= "" then
       local data = noctalia.json.decode(res.stdout)
       if data then
@@ -118,7 +127,7 @@ function render()
     ui.row({ align = "center", justify = "space_between" }, {
       ui.row({ gap = 8, align = "center" }, {
         ui.glyph({ name = "access-point", size = 20, color = state.active and "primary" or "on_surface" }),
-        ui.label({ text = "Share WiFi", fontSize = 16, fontWeight = "bold" })
+        ui.label({ text = tr("panel.title"), fontSize = 16, fontWeight = "bold" })
       }),
       ui.row({
         fill = state.active and "primary/0.2" or "surface_variant/0.5",
@@ -130,7 +139,7 @@ function render()
         ui.label({
           text = if state.active
             then string.format("ACTIVE (%d/%d connected)", state.clients, state.maxClients)
-            else "OFF",
+            else tr("panel.status_off"),
           fontSize = 11,
           fontWeight = "bold",
           color = state.active and "primary" or "on_surface/0.5"
@@ -142,44 +151,42 @@ function render()
 
     -- SSID Input
     ui.column({ gap = 4 }, {
-      ui.label({ text = "Network Name (SSID)", fontSize = 12, color = "on_surface/0.7" }),
+      ui.label({ text = tr("panel.ssid_label"), fontSize = 12, color = "on_surface/0.7" }),
       ui.input({
         key = "field_ssid",
         value = state.ssid,
-        placeholder = "Hotspot SSID",
+        placeholder = tr("panel.ssid_placeholder"),
         enabled = not state.active,
         onChange = function(val)
           state.ssid = val
-          saveConfig()
         end
       })
     }),
 
     -- Password Input
     ui.column({ gap = 4 }, {
-      ui.label({ text = "Password (min 8 chars)", fontSize = 12, color = "on_surface/0.7" }),
+      ui.label({ text = tr("panel.password_label"), fontSize = 12, color = "on_surface/0.7" }),
       ui.input({
         key = "field_password",
         value = state.password,
-        placeholder = "Hotspot password",
+        placeholder = tr("panel.password_placeholder"),
         enabled = not state.active,
         onChange = function(val)
           state.password = val
-          saveConfig()
         end
       })
     }),
 
     ui.separator({ spacing = 2 }),
 
-    -- Dòng 1: Frequency band (khớp với hình người dùng gửi)
+    -- Frequency band
     ui.column({ gap = 6 }, {
       ui.row({ align = "center", justify = "space_between" }, {
-        ui.label({ text = "Frequency band", fontSize = 12, fontWeight = "medium" }),
+        ui.label({ text = tr("panel.band_label"), fontSize = 12, fontWeight = "medium" }),
         ui.row({ gap = 4 }, {
           ui.button({
             key = "band_auto",
-            text = "Auto",
+            text = tr("panel.band_auto"),
             controlSize = "sm",
             variant = state.band == "Auto" and "primary" or "ghost",
             enabled = not state.active,
@@ -191,7 +198,7 @@ function render()
           }),
           ui.button({
             key = "band_5g",
-            text = "5Ghz",
+            text = tr("panel.band_5g"),
             controlSize = "sm",
             variant = state.band == "5Ghz" and "primary" or "ghost",
             enabled = not state.active,
@@ -203,7 +210,7 @@ function render()
           }),
           ui.button({
             key = "band_24g",
-            text = "2.4Ghz",
+            text = tr("panel.band_24g"),
             controlSize = "sm",
             variant = state.band == "2.4Ghz" and "primary" or "ghost",
             enabled = not state.active,
@@ -217,26 +224,25 @@ function render()
       })
     }),
 
-    -- Dòng 2: Channel
+    -- Channel
     ui.row({ align = "center", justify = "space_between" }, {
-      ui.label({ text = "Channel", fontSize = 12, fontWeight = "medium" }),
+      ui.label({ text = tr("panel.channel_label"), fontSize = 12, fontWeight = "medium" }),
       ui.input({
         key = "field_channel",
         value = tostring(state.channel),
-        placeholder = "Auto",
+        placeholder = tr("panel.channel_placeholder"),
         width = 65,
         controlSize = "sm",
         enabled = not state.active,
         onChange = function(val)
           state.channel = val
-          saveConfig()
         end
       })
     }),
 
-    -- Dòng 3: Max clients (Giới hạn người kết nối: 1 - 8)
+    -- Max clients (1 - 8)
     ui.row({ align = "center", justify = "space_between" }, {
-      ui.label({ text = "Max clients (1 - 8)", fontSize = 12, fontWeight = "medium" }),
+      ui.label({ text = tr("panel.max_clients_label"), fontSize = 12, fontWeight = "medium" }),
       ui.input({
         key = "field_max_clients",
         value = tostring(state.maxClients),
@@ -249,21 +255,19 @@ function render()
           if num then
             if num > 8 then
               num = 8
-              noctalia.notify("Share WiFi", "Max clients is capped at 8")
+              noctalia.notify(tr("panel.title"), tr("notify.max_clients_capped"))
             elseif num < 1 then
               num = 1
             end
             state.maxClients = num
-            saveConfig()
           elseif val == "" then
             state.maxClients = 2
-            saveConfig()
           end
         end
       })
     }),
 
-    -- Ghi chú auto-detect kèm nút làm mới
+    -- Auto-detect note & refresh
     ui.row({ align = "center", justify = "space_between" }, {
       ui.label({
         text = state.autoDetectedInfo ~= "" and state.autoDetectedInfo or state.statusMessage,
@@ -276,11 +280,11 @@ function render()
         glyphSize = 13,
         variant = "ghost",
         controlSize = "sm",
-        tooltip = "Auto-detect Band & Channel from current Wi-Fi",
+        tooltip = tr("panel.rescan_tooltip"),
         enabled = not state.active,
         onClick = function()
           autoDetect(function()
-            noctalia.notify("Share WiFi", "Channel & Band synced!")
+            noctalia.notify(tr("panel.title"), tr("notify.synced"))
           end)
         end
       })
@@ -288,10 +292,10 @@ function render()
 
     ui.spacer({ size = 4 }),
 
-    -- Nút Bật / Tắt Hotspot
+    -- Toggle Hotspot Button
     ui.button({
       key = "btn_toggle",
-      text = state.active and "Stop Hotspot" or "Start Hotspot",
+      text = state.active and tr("panel.btn_stop") or tr("panel.btn_start"),
       variant = state.active and "destructive" or "primary",
       onClick = function()
         toggleHotspot()
@@ -305,33 +309,35 @@ function toggleHotspot()
     -- Optimistic instant UI update (no lag)
     state.active = false
     state.clients = 0
-    state.statusMessage = "Hotspot stopped"
+    state.statusMessage = tr("panel.status_stopped")
     noctalia.state.set("share_wifi_status", { active = false, clients = 0, maxClients = state.maxClients })
-    noctalia.notify("Share WiFi", "Hotspot turned off")
+    noctalia.notify(tr("panel.title"), tr("notify.stopped"))
     render()
 
-    noctalia.runAsync(helperPath .. " stop", function(res)
+    noctalia.runAsync(shEscape(helperPath) .. " stop", function(res)
       checkStatus()
     end)
   else
-    state.statusMessage = "Starting hotspot..."
+    saveConfig()
+    state.statusMessage = tr("panel.status_starting")
     render()
 
     local bandArg = state.band
     local chanArg = (state.channel and state.channel ~= "") and state.channel or "Auto"
     local maxClientsArg = tostring(state.maxClients or 0)
-    local startCmd = string.format("%s start %q %q %q %q %q",
-      helperPath, state.ssid, state.password, bandArg, chanArg, maxClientsArg
+    local startCmd = string.format("%s start %s %s %s %s %s",
+      shEscape(helperPath), shEscape(state.ssid), shEscape(state.password),
+      shEscape(bandArg), shEscape(chanArg), shEscape(maxClientsArg)
     )
 
     noctalia.runAsync(startCmd, function(res)
       if res.exitCode == 0 then
         state.active = true
-        state.statusMessage = "Hotspot active (" .. state.band .. ", ch " .. state.channel .. ")"
+        state.statusMessage = string.format("Hotspot active (%s, ch %s)", state.band, state.channel)
         noctalia.state.set("share_wifi_status", { active = true, clients = 0, maxClients = state.maxClients })
-        noctalia.notify("Share WiFi", "Hotspot started successfully!")
+        noctalia.notify(tr("panel.title"), tr("notify.started"))
       else
-        local errMsg = "Failed to start"
+        local errMsg = tr("notify.error_start_failed")
         if res.stderr and res.stderr ~= "" then
           local ok, parsed = pcall(function() return noctalia.json.decode(res.stderr) end)
           if ok and parsed and parsed.error then
@@ -341,7 +347,7 @@ function toggleHotspot()
           end
         end
         state.statusMessage = "Error: " .. errMsg
-        noctalia.notifyError("Share WiFi Error", errMsg)
+        noctalia.notifyError(tr("notify.error_title"), errMsg)
       end
       checkStatus()
     end)
