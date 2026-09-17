@@ -28,6 +28,12 @@ Install `create_ap`, `nmcli`, `iw`, `ip`, and `pkexec` on `PATH`.
 
 Starting and stopping the hotspot requires root privileges to configure virtual wireless interfaces and manage `create_ap`. The plugin delegates privileged operations through **PolicyKit (`pkexec`)** by default, prompting for authentication via your desktop environment's graphical agent only when required.
 
+## Settings
+
+| Setting | Type | Default | Description |
+| --- | --- | --- | --- |
+| `refresh_interval` | `int` | `3` | Refresh interval in seconds for checking hotspot status and connected clients. |
+
 ## Usage
 
 ### Bar Widget

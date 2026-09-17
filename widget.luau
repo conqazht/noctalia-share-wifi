@@ -11,13 +11,21 @@ local function shEscape(str)
   return "'" .. string.gsub(tostring(str), "'", "'\\''") .. "'"
 end
 
-noctalia.setUpdateInterval(1500)
+local function getRefreshIntervalMs()
+  local val = tonumber(noctalia.getConfig("refresh_interval")) or 3
+  if val < 1 then val = 1 end
+  if val > 3600 then val = 3600 end
+  return val * 1000
+end
+
+noctalia.setUpdateInterval(getRefreshIntervalMs())
 
 local status = {
   active = false,
   starting = false,
+  stopping = false,
   clients = 0,
-  maxClients = 0,
+  maxClients = 2,
 }
 
 -- Try loading saved maxClients from config
@@ -47,7 +55,7 @@ local function renderWidget()
     ui.glyph({
       name = "access-point",
       size = 17,
-      color = if (status.active or status.starting) then "primary" else "on_surface",
+      color = if (status.active or status.starting or status.stopping) then "primary" else "on_surface",
     })
   }
 
@@ -60,7 +68,7 @@ local function renderWidget()
       fontWeight = "bold",
       color = "primary",
     }))
-  elseif status.starting then
+  elseif status.starting or status.stopping then
     table.insert(children, ui.label({
       text = "...",
       fontSize = 11,
@@ -75,19 +83,40 @@ local function renderWidget()
     local maxLimit = (status.maxClients and status.maxClients > 0) and status.maxClients or 2
     local clientStr = string.format("%d/%d clients", status.clients, maxLimit)
     barWidget.setTooltip("Share WiFi: Active (" .. clientStr .. ")\nClick: Settings\nRight-click: Turn off")
+  elseif status.starting then
+    barWidget.setTooltip("Share WiFi: Starting hotspot...")
+  elseif status.stopping then
+    barWidget.setTooltip("Share WiFi: Stopping hotspot...")
   else
     barWidget.setTooltip("Share WiFi: Off\nClick: Settings & Start")
   end
 end
 
 function update()
+  -- Keep interval in sync with user's configured setting
+  noctalia.setUpdateInterval(getRefreshIntervalMs())
+
+  -- If starting or stopping in progress, don't overwrite with background status!
+  if status.starting or status.stopping then
+    return
+  end
+
   noctalia.runAsync(shEscape(helperPath) .. " status", function(res)
+    if status.starting or status.stopping then
+      return
+    end
     if res.exitCode == 0 and res.stdout ~= "" then
       local data = noctalia.json.decode(res.stdout)
       if data then
         status.active = (data.active == true)
         status.clients = tonumber(data.clients) or 0
-        noctalia.state.set("share_wifi_status", status)
+        noctalia.state.set("share_wifi_status", {
+          active = status.active,
+          starting = false,
+          stopping = false,
+          clients = status.clients,
+          maxClients = status.maxClients
+        })
         renderWidget()
       end
     end
@@ -99,13 +128,35 @@ function onClick()
 end
 
 function onRightClick()
+  if status.starting or status.stopping then
+    return
+  end
+
   if status.active then
+    status.stopping = true
     status.active = false
     status.clients = 0
-    noctalia.state.set("share_wifi_status", status)
+    noctalia.state.set("share_wifi_status", {
+      active = false,
+      starting = false,
+      stopping = true,
+      clients = 0,
+      maxClients = status.maxClients
+    })
     renderWidget()
     noctalia.notify(tr("panel.title"), tr("notify.stopped"))
-    noctalia.runAsync(shEscape(helperPath) .. " stop", function()
+
+    noctalia.runAsync(shEscape(helperPath) .. " stop", function(res)
+      status.stopping = false
+      status.active = false
+      noctalia.state.set("share_wifi_status", {
+        active = false,
+        starting = false,
+        stopping = false,
+        clients = 0,
+        maxClients = status.maxClients
+      })
+      renderWidget()
       update()
     end)
   else
@@ -118,6 +169,7 @@ noctalia.state.watch("share_wifi_status", function(newStatus)
   if newStatus then
     status.active = (newStatus.active == true)
     status.starting = (newStatus.starting == true)
+    status.stopping = (newStatus.stopping == true)
     status.clients = tonumber(newStatus.clients) or 0
     if newStatus.maxClients ~= nil then
       status.maxClients = tonumber(newStatus.maxClients) or 0

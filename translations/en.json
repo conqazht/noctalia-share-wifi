@@ -23,8 +23,11 @@
     "rescan_tooltip": "Auto-detect Band & Channel from current Wi-Fi",
     "btn_start": "Start Hotspot",
     "btn_stop": "Stop Hotspot",
+    "btn_starting": "Starting...",
+    "btn_stopping": "Stopping...",
     "status_ready": "Ready",
     "status_starting": "Starting hotspot...",
+    "status_stopping": "Stopping hotspot...",
     "status_stopped": "Hotspot stopped",
     "status_active_fmt": "Hotspot active ({band}, ch {channel})",
     "detected_wifi": "Detected Wi-Fi: {band} (ch {channel})",
@@ -43,5 +46,11 @@
     "tooltip_active": "Share WiFi: Active ({clients}/{max} clients)\nClick: Settings\nRight-click: Turn off",
     "tooltip_off": "Share WiFi: Off\nClick: Settings & Start",
     "stopped": "Hotspot stopped"
+  },
+  "settings": {
+    "refresh_interval": {
+      "label": "Refresh interval (seconds)",
+      "description": "How often hotspot status and connected clients are checked."
+    }
   }
 }

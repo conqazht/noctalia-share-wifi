@@ -3,6 +3,7 @@
 ACTION="${1:-status}"
 
 PID_FILE="/tmp/noctalia-share-wifi.pid"
+LOG_FILE="/tmp/noctalia-share-wifi.log"
 
 get_active_wifi() {
     nmcli -t -f active,chan,freq dev wifi list --rescan no 2>/dev/null | grep '^yes' | head -n1 || true
@@ -23,21 +24,34 @@ stop_hotspot() {
         pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
     fi
 
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    if [ -z "$pid" ] || [ ! -d "/proc/$pid" ]; then
+        local pgrep_pid
+        pgrep_pid=$(pgrep -f "create_ap.*(wlan0|ap0)" | head -n1 || true)
+        [ -n "$pgrep_pid" ] && pid="$pgrep_pid"
+    fi
+
+    if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
         run_root create_ap --stop "$pid" >/dev/null 2>&1 || run_root kill -USR1 "$pid" >/dev/null 2>&1 || true
-
-        # Wait up to 1.5s for create_ap to gracefully clean up
-        local count=0
-        while kill -0 "$pid" 2>/dev/null && [ $count -lt 15 ]; do
-            sleep 0.1
-            count=$((count + 1))
-        done
-
-        if kill -0 "$pid" 2>/dev/null; then
-            run_root kill -9 "$pid" >/dev/null 2>&1 || true
-        fi
     elif iw dev ap0 info >/dev/null 2>&1; then
         run_root create_ap --stop ap0 >/dev/null 2>&1 || true
+    fi
+
+    # Wait up to 4s for ap0 to actually be dismantled and process to exit
+    local count=0
+    while (iw dev ap0 info >/dev/null 2>&1 || ([ -n "$pid" ] && [ -d "/proc/$pid" ])) && [ $count -lt 40 ]; do
+        sleep 0.1
+        count=$((count + 1))
+    done
+
+    # Force cleanup only if interface or process is still stubbornly present after 4s
+    if iw dev ap0 info >/dev/null 2>&1 || ([ -n "$pid" ] && [ -d "/proc/$pid" ]); then
+        if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+            run_root kill -9 "$pid" >/dev/null 2>&1 || true
+        fi
+        run_root pkill -9 -f "create_ap.*(wlan0|ap0)" >/dev/null 2>&1 || true
+        if iw dev ap0 info >/dev/null 2>&1; then
+            run_root iw dev ap0 del >/dev/null 2>&1 || true
+        fi
     fi
 
     rm -f "$PID_FILE" 2>/dev/null || true
@@ -66,13 +80,6 @@ case "$ACTION" in
     status)
         is_active=false
         client_count=0
-
-        if [ -f "$PID_FILE" ]; then
-            pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
-            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-                is_active=true
-            fi
-        fi
 
         if iw dev ap0 info >/dev/null 2>&1; then
             is_active=true
@@ -113,7 +120,9 @@ case "$ACTION" in
             stop_hotspot
         fi
 
-        CMD_ARGS=(--daemon --pidfile "$PID_FILE" wlan0 "$INET_IFACE" "$SSID" "$PASS")
+        rm -f "$LOG_FILE" "$PID_FILE" 2>/dev/null || true
+
+        CMD_ARGS=(--daemon --pidfile "$PID_FILE" --logfile "$LOG_FILE" wlan0 "$INET_IFACE" "$SSID" "$PASS")
 
         # Add channel if specified and valid
         if [ -n "$CHAN" ] && [ "$CHAN" != "Auto" ] && [ "$CHAN" != "default" ]; then
@@ -140,15 +149,52 @@ case "$ACTION" in
         OUTPUT=$(run_root create_ap "${CMD_ARGS[@]}" 2>&1)
         EXIT_CODE=$?
 
-        if [ $EXIT_CODE -eq 0 ]; then
-            echo '{"success": true}'
-            exit 0
-        else
+        if [ $EXIT_CODE -ne 0 ]; then
             ERR_MSG=$(echo "$OUTPUT" | grep -i "ERROR:" | head -n1)
             [ -z "$ERR_MSG" ] && ERR_MSG="$OUTPUT"
             ERR_CLEAN=$(printf '%s' "$ERR_MSG" | tr -d '\n\r' | sed 's/\\/\\\\/g; s/"/\\"/g')
             echo "{\"error\": \"$ERR_CLEAN\"}" >&2
             exit $EXIT_CODE
+        fi
+
+        # Wait up to 6s for daemon to initialize and create ap0
+        started=false
+        local pid=""
+        for i in $(seq 1 60); do
+            sleep 0.1
+            if iw dev ap0 info >/dev/null 2>&1; then
+                started=true
+                break
+            fi
+
+            # Check if PID file was created and daemon died prematurely
+            if [ -f "$PID_FILE" ]; then
+                pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
+                if [ -n "$pid" ] && [ ! -d "/proc/$pid" ]; then
+                    break
+                fi
+            fi
+
+            # Check if log file recorded a fatal error
+            if [ -f "$LOG_FILE" ] && grep -q -i -E "(ERROR:|Failed to run hostapd|die:)" "$LOG_FILE" 2>/dev/null; then
+                break
+            fi
+        done
+
+        if [ "$started" = true ]; then
+            echo '{"success": true}'
+            exit 0
+        else
+            ERR_MSG=""
+            if [ -f "$LOG_FILE" ]; then
+                ERR_MSG=$(grep -i -E "(ERROR:|Failed to|die:)" "$LOG_FILE" 2>/dev/null | tail -n1 || true)
+                [ -z "$ERR_MSG" ] && ERR_MSG=$(tail -n3 "$LOG_FILE" 2>/dev/null | tr '\n' ' ' || true)
+            fi
+            [ -z "$ERR_MSG" ] && ERR_MSG="Failed to start hotspot daemon"
+            stop_hotspot
+            ERR_CLEAN=$(printf '%s' "$ERR_MSG" | tr -d '\n\r' | sed 's/\\/\\\\/g; s/"/\\"/g')
+            echo "{\"error\": \"$ERR_CLEAN\"}" >&2
+            exit 1
         fi
         ;;
 

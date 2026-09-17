@@ -21,6 +21,8 @@ local state = {
   useChannel = true,      -- checkbox like in screenshot
   maxClients = 2,         -- default 2, strictly 1-8 (no unlimited)
   active = false,
+  starting = false,
+  stopping = false,
   clients = 0,
   detecting = false,
   statusMessage = "Ready",
@@ -104,7 +106,16 @@ end
 
 -- Refresh running status
 local function checkStatus(callback)
+  if state.starting or state.stopping then
+    if callback then callback() end
+    return
+  end
+
   noctalia.runAsync(shEscape(helperPath) .. " status", function(res)
+    if state.starting or state.stopping then
+      if callback then callback() end
+      return
+    end
     if res.exitCode == 0 and res.stdout ~= "" then
       local data = noctalia.json.decode(res.stdout)
       if data then
@@ -112,7 +123,10 @@ local function checkStatus(callback)
         state.clients = tonumber(data.clients) or 0
         noctalia.state.set("share_wifi_status", {
           active = state.active,
-          clients = state.clients
+          starting = false,
+          stopping = false,
+          clients = state.clients,
+          maxClients = state.maxClients
         })
       end
     end
@@ -122,27 +136,38 @@ local function checkStatus(callback)
 end
 
 function render()
+  local isBusy = state.active or state.starting or state.stopping
+
   panel.render(ui.column({ gap = 10, padding = 16 }, {
     -- Header
     ui.row({ align = "center", justify = "space_between" }, {
       ui.row({ gap = 8, align = "center" }, {
-        ui.glyph({ name = "access-point", size = 20, color = state.active and "primary" or "on_surface" }),
+        ui.glyph({
+          name = "access-point",
+          size = 20,
+          color = (state.active or state.starting) and "primary" or "on_surface"
+        }),
         ui.label({ text = tr("panel.title"), fontSize = 16, fontWeight = "bold" })
       }),
       ui.row({
-        fill = state.active and "primary/0.2" or "surface_variant/0.5",
+        fill = (state.active or state.starting) and "primary/0.2" or "surface_variant/0.5",
         radius = 6,
         paddingH = 8,
         paddingV = 4,
         align = "center"
       }, {
         ui.label({
-          text = if state.active
-            then string.format("ACTIVE (%d/%d connected)", state.clients, state.maxClients)
-            else tr("panel.status_off"),
+          text = if state.starting then
+            tr("panel.status_starting")
+          elseif state.stopping then
+            tr("panel.status_stopping")
+          elseif state.active then
+            string.format("ACTIVE (%d/%d connected)", state.clients, state.maxClients)
+          else
+            tr("panel.status_off"),
           fontSize = 11,
           fontWeight = "bold",
-          color = state.active and "primary" or "on_surface/0.5"
+          color = (state.active or state.starting) and "primary" or "on_surface/0.5"
         })
       })
     }),
@@ -156,7 +181,7 @@ function render()
         key = "field_ssid",
         value = state.ssid,
         placeholder = tr("panel.ssid_placeholder"),
-        enabled = not state.active,
+        enabled = not isBusy,
         onChange = function(val)
           state.ssid = val
         end
@@ -170,7 +195,7 @@ function render()
         key = "field_password",
         value = state.password,
         placeholder = tr("panel.password_placeholder"),
-        enabled = not state.active,
+        enabled = not isBusy,
         onChange = function(val)
           state.password = val
         end
@@ -189,7 +214,7 @@ function render()
             text = tr("panel.band_auto"),
             controlSize = "sm",
             variant = state.band == "Auto" and "primary" or "ghost",
-            enabled = not state.active,
+            enabled = not isBusy,
             onClick = function()
               state.band = "Auto"
               saveConfig()
@@ -201,7 +226,7 @@ function render()
             text = tr("panel.band_5g"),
             controlSize = "sm",
             variant = state.band == "5Ghz" and "primary" or "ghost",
-            enabled = not state.active,
+            enabled = not isBusy,
             onClick = function()
               state.band = "5Ghz"
               saveConfig()
@@ -213,7 +238,7 @@ function render()
             text = tr("panel.band_24g"),
             controlSize = "sm",
             variant = state.band == "2.4Ghz" and "primary" or "ghost",
-            enabled = not state.active,
+            enabled = not isBusy,
             onClick = function()
               state.band = "2.4Ghz"
               saveConfig()
@@ -233,7 +258,7 @@ function render()
         placeholder = tr("panel.channel_placeholder"),
         width = 65,
         controlSize = "sm",
-        enabled = not state.active,
+        enabled = not isBusy,
         onChange = function(val)
           state.channel = val
         end
@@ -249,7 +274,7 @@ function render()
         placeholder = "2",
         width = 65,
         controlSize = "sm",
-        enabled = not state.active,
+        enabled = not isBusy,
         onChange = function(val)
           local num = tonumber(val)
           if num then
@@ -281,7 +306,7 @@ function render()
         variant = "ghost",
         controlSize = "sm",
         tooltip = tr("panel.rescan_tooltip"),
-        enabled = not state.active,
+        enabled = not isBusy,
         onClick = function()
           autoDetect(function()
             noctalia.notify(tr("panel.title"), tr("notify.synced"))
@@ -295,8 +320,21 @@ function render()
     -- Toggle Hotspot Button
     ui.button({
       key = "btn_toggle",
-      text = state.active and tr("panel.btn_stop") or tr("panel.btn_start"),
-      variant = state.active and "destructive" or "primary",
+      text = if state.starting then
+        tr("panel.btn_starting")
+      elseif state.stopping then
+        tr("panel.btn_stopping")
+      elseif state.active then
+        tr("panel.btn_stop")
+      else
+        tr("panel.btn_start"),
+      variant = if (state.starting or state.stopping) then
+        "ghost"
+      elseif state.active then
+        "destructive"
+      else
+        "primary",
+      enabled = not (state.starting or state.stopping),
       onClick = function()
         toggleHotspot()
       end
@@ -305,22 +343,49 @@ function render()
 end
 
 function toggleHotspot()
+  if state.starting or state.stopping then
+    return
+  end
+
   if state.active then
-    -- Optimistic instant UI update (no lag)
-    state.active = false
-    state.clients = 0
-    state.statusMessage = tr("panel.status_stopped")
-    noctalia.state.set("share_wifi_status", { active = false, clients = 0, maxClients = state.maxClients })
-    noctalia.notify(tr("panel.title"), tr("notify.stopped"))
+    state.stopping = true
+    state.statusMessage = tr("panel.status_stopping")
+    noctalia.state.set("share_wifi_status", {
+      active = false,
+      starting = false,
+      stopping = true,
+      clients = 0,
+      maxClients = state.maxClients
+    })
     render()
 
     noctalia.runAsync(shEscape(helperPath) .. " stop", function(res)
+      state.stopping = false
+      state.active = false
+      state.clients = 0
+      state.statusMessage = tr("panel.status_stopped")
+      noctalia.state.set("share_wifi_status", {
+        active = false,
+        starting = false,
+        stopping = false,
+        clients = 0,
+        maxClients = state.maxClients
+      })
+      noctalia.notify(tr("panel.title"), tr("notify.stopped"))
+      render()
       checkStatus()
     end)
   else
     saveConfig()
+    state.starting = true
     state.statusMessage = tr("panel.status_starting")
-    noctalia.state.set("share_wifi_status", { active = false, starting = true, clients = 0, maxClients = state.maxClients })
+    noctalia.state.set("share_wifi_status", {
+      active = false,
+      starting = true,
+      stopping = false,
+      clients = 0,
+      maxClients = state.maxClients
+    })
     render()
 
     local bandArg = state.band
@@ -332,13 +397,27 @@ function toggleHotspot()
     )
 
     noctalia.runAsync(startCmd, function(res)
+      state.starting = false
       if res.exitCode == 0 then
         state.active = true
         state.statusMessage = string.format("Hotspot active (%s, ch %s)", state.band, state.channel)
-        noctalia.state.set("share_wifi_status", { active = true, starting = false, clients = 0, maxClients = state.maxClients })
+        noctalia.state.set("share_wifi_status", {
+          active = true,
+          starting = false,
+          stopping = false,
+          clients = 0,
+          maxClients = state.maxClients
+        })
         noctalia.notify(tr("panel.title"), tr("notify.started"))
       else
-        noctalia.state.set("share_wifi_status", { active = false, starting = false, clients = 0, maxClients = state.maxClients })
+        state.active = false
+        noctalia.state.set("share_wifi_status", {
+          active = false,
+          starting = false,
+          stopping = false,
+          clients = 0,
+          maxClients = state.maxClients
+        })
         local errMsg = tr("notify.error_start_failed")
         if res.stderr and res.stderr ~= "" then
           local ok, parsed = pcall(function() return noctalia.json.decode(res.stderr) end)
@@ -351,6 +430,7 @@ function toggleHotspot()
         state.statusMessage = "Error: " .. errMsg
         noctalia.notifyError(tr("notify.error_title"), errMsg)
       end
+      render()
       checkStatus()
     end)
   end
@@ -366,6 +446,24 @@ function onOpen()
     end
   end)
 end
+
+-- Sync if hotspot is toggled externally (e.g. from bar widget right-click or shortcut)
+noctalia.state.watch("share_wifi_status", function(newStatus)
+  if newStatus and not state.starting and not state.stopping then
+    local changed = false
+    if newStatus.active ~= nil and state.active ~= newStatus.active then
+      state.active = newStatus.active
+      changed = true
+    end
+    if newStatus.clients ~= nil and state.clients ~= tonumber(newStatus.clients) then
+      state.clients = tonumber(newStatus.clients) or 0
+      changed = true
+    end
+    if changed then
+      render()
+    end
+  end
+end)
 
 -- Initial load
 loadSavedConfig()
