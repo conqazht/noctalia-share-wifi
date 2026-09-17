@@ -320,6 +320,7 @@ function toggleHotspot()
   else
     saveConfig()
     state.statusMessage = tr("panel.status_starting")
+    noctalia.state.set("share_wifi_status", { active = false, starting = true, clients = 0, maxClients = state.maxClients })
     render()
 
     local bandArg = state.band
@@ -334,9 +335,10 @@ function toggleHotspot()
       if res.exitCode == 0 then
         state.active = true
         state.statusMessage = string.format("Hotspot active (%s, ch %s)", state.band, state.channel)
-        noctalia.state.set("share_wifi_status", { active = true, clients = 0, maxClients = state.maxClients })
+        noctalia.state.set("share_wifi_status", { active = true, starting = false, clients = 0, maxClients = state.maxClients })
         noctalia.notify(tr("panel.title"), tr("notify.started"))
       else
+        noctalia.state.set("share_wifi_status", { active = false, starting = false, clients = 0, maxClients = state.maxClients })
         local errMsg = tr("notify.error_start_failed")
         if res.stderr and res.stderr ~= "" then
           local ok, parsed = pcall(function() return noctalia.json.decode(res.stderr) end)

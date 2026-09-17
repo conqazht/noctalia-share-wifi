@@ -11,10 +11,11 @@ local function shEscape(str)
   return "'" .. string.gsub(tostring(str), "'", "'\\''") .. "'"
 end
 
-noctalia.setUpdateInterval(3000)
+noctalia.setUpdateInterval(1500)
 
 local status = {
   active = false,
+  starting = false,
   clients = 0,
   maxClients = 0,
 }
@@ -46,7 +47,7 @@ local function renderWidget()
     ui.glyph({
       name = "access-point",
       size = 17,
-      color = if status.active then "primary" else "on_surface",
+      color = if (status.active or status.starting) then "primary" else "on_surface",
     })
   }
 
@@ -55,6 +56,13 @@ local function renderWidget()
     local badgeText = string.format("%d/%d", status.clients, maxLimit)
     table.insert(children, ui.label({
       text = badgeText,
+      fontSize = 11,
+      fontWeight = "bold",
+      color = "primary",
+    }))
+  elseif status.starting then
+    table.insert(children, ui.label({
+      text = "...",
       fontSize = 11,
       fontWeight = "bold",
       color = "primary",
@@ -109,6 +117,7 @@ end
 noctalia.state.watch("share_wifi_status", function(newStatus)
   if newStatus then
     status.active = (newStatus.active == true)
+    status.starting = (newStatus.starting == true)
     status.clients = tonumber(newStatus.clients) or 0
     if newStatus.maxClients ~= nil then
       status.maxClients = tonumber(newStatus.maxClients) or 0
