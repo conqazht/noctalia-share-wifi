@@ -26,9 +26,9 @@ stop_hotspot() {
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
         run_root create_ap --stop "$pid" >/dev/null 2>&1 || run_root kill -USR1 "$pid" >/dev/null 2>&1 || true
 
-        # Wait up to 0.5s for process to exit
+        # Wait up to 1.5s for create_ap to gracefully clean up
         local count=0
-        while kill -0 "$pid" 2>/dev/null && [ $count -lt 5 ]; do
+        while kill -0 "$pid" 2>/dev/null && [ $count -lt 15 ]; do
             sleep 0.1
             count=$((count + 1))
         done
@@ -38,11 +38,6 @@ stop_hotspot() {
         fi
     elif iw dev ap0 info >/dev/null 2>&1; then
         run_root create_ap --stop ap0 >/dev/null 2>&1 || true
-    fi
-
-    # Cleanup interface ap0 if still remaining
-    if iw dev ap0 info >/dev/null 2>&1; then
-        run_root iw dev ap0 del >/dev/null 2>&1 || true
     fi
 
     rm -f "$PID_FILE" 2>/dev/null || true
@@ -69,11 +64,10 @@ case "$ACTION" in
         ;;
 
     status)
-        local is_active=false
-        local client_count=0
+        is_active=false
+        client_count=0
 
         if [ -f "$PID_FILE" ]; then
-            local pid
             pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
             if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
                 is_active=true
