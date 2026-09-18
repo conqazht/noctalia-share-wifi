@@ -4,14 +4,14 @@ local function syncStatus()
   local raw = noctalia.state.get("share_wifi_status")
   if raw and raw.active then
     shortcut.setActive(true)
-    local sub = noctalia.tr("shortcut.sharing")
     if raw.clients and raw.clients > 0 then
-      sub = raw.clients .. " connected"
+      shortcut.setLabel(noctalia.tr("shortcut.connected", { count = tostring(raw.clients) }))
+    else
+      shortcut.setLabel(noctalia.tr("shortcut.sharing"))
     end
-    shortcut.setSubtitle(sub)
   else
     shortcut.setActive(false)
-    shortcut.setSubtitle(noctalia.tr("shortcut.off"))
+    shortcut.setLabel(noctalia.tr("shortcut.label"))
   end
 end
 

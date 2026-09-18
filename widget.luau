@@ -81,14 +81,16 @@ local function renderWidget()
 
   if status.active then
     local maxLimit = (status.maxClients and status.maxClients > 0) and status.maxClients or 2
-    local clientStr = string.format("%d/%d clients", status.clients, maxLimit)
-    barWidget.setTooltip("Share WiFi: Active (" .. clientStr .. ")\nClick: Settings\nRight-click: Turn off")
+    barWidget.setTooltip(tr("widget.tooltip_active", {
+      clients = tostring(status.clients),
+      max = tostring(maxLimit)
+    }))
   elseif status.starting then
-    barWidget.setTooltip("Share WiFi: Starting hotspot...")
+    barWidget.setTooltip(tr("widget.tooltip_starting"))
   elseif status.stopping then
-    barWidget.setTooltip("Share WiFi: Stopping hotspot...")
+    barWidget.setTooltip(tr("widget.tooltip_stopping"))
   else
-    barWidget.setTooltip("Share WiFi: Off\nClick: Settings & Start")
+    barWidget.setTooltip(tr("widget.tooltip_off"))
   end
 end
 

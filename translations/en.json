@@ -44,8 +44,9 @@
   },
   "widget": {
     "tooltip_active": "Share WiFi: Active ({clients}/{max} clients)\nClick: Settings\nRight-click: Turn off",
-    "tooltip_off": "Share WiFi: Off\nClick: Settings & Start",
-    "stopped": "Hotspot stopped"
+    "tooltip_starting": "Share WiFi: Starting hotspot...",
+    "tooltip_stopping": "Share WiFi: Stopping hotspot...",
+    "tooltip_off": "Share WiFi: Off\nClick: Settings & Start"
   },
   "settings": {
     "refresh_interval": {

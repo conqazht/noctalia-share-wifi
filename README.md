@@ -13,15 +13,22 @@ Share a Wi-Fi hotspot from your Linux laptop without dropping your current Wi-Fi
 
 Install `create_ap`, `nmcli`, `iw`, `ip`, and `pkexec` on `PATH`.
 
-- Arch Linux:
+- Arch Linux (AUR):
   ```sh
   yay -S create_ap iproute2
   # or with paru:
   paru -S create_ap iproute2
   ```
-- Debian / Ubuntu:
+- Debian / Ubuntu (install from source — `create_ap` is **not** available via `apt`):
   ```sh
-  sudo apt install create_ap network-manager iw iproute2 policykit-1
+  # Install runtime dependencies
+  sudo apt install hostapd dnsmasq iproute2 iw network-manager iptables policykit-1
+
+  # Build & install create_ap from source
+  git clone https://github.com/lakinduakash/linux-wifi-hotspot.git
+  cd linux-wifi-hotspot
+  make
+  sudo make install
   ```
 
 ### Authentication & Permissions
@@ -67,3 +74,4 @@ Add `shortcut` to your Control Center in Noctalia Settings for quick toggling.
 - **Simultaneous Wi-Fi & Hotspot**: Uses Linux kernel virtual interface `ap0` on top of your physical Wi-Fi interface (`wlan0`), allowing your laptop to remain connected to the internet while simultaneously sharing it.
 - **Client Limit**: Enforced at the 802.11 MAC management frame level via `hostapd` (`max_num_sta`).
 - **Configuration & Persistence**: Hotspot credentials and preferences (SSID, passphrase, frequency band, channel, max clients) are persisted in `config.json` inside the plugin's data directory upon starting the hotspot so they do not need to be re-entered. If no saved configuration exists on initial launch, defaults are pre-populated from `/etc/create_ap.conf` if present on the system.
+- **Credential Storage**: The WPA2 passphrase is stored in **cleartext** in the plugin's data directory (`config.json`). The file is readable only by the current user (located in `$XDG_DATA_HOME/noctalia/plugins/share-wifi/`). If this is a concern, delete `config.json` after stopping the hotspot.

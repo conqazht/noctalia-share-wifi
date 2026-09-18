@@ -25,7 +25,7 @@ local state = {
   stopping = false,
   clients = 0,
   detecting = false,
-  statusMessage = "Ready",
+  statusMessage = "",
   autoDetectedInfo = ""
 }
 
@@ -89,7 +89,7 @@ local function autoDetect(callback)
         if data.connected then
           state.band = data.band or "5Ghz"
           state.channel = data.channel or "40"
-          state.autoDetectedInfo = string.format("Detected Wi-Fi: %s (ch %s)", state.band, state.channel)
+          state.autoDetectedInfo = tr("panel.detected_wifi", { band = state.band, channel = state.channel })
           state.statusMessage = tr("panel.synced_status")
         else
           state.autoDetectedInfo = tr("panel.no_wifi")
@@ -162,7 +162,10 @@ function render()
           elseif state.stopping then
             tr("panel.status_stopping")
           elseif state.active then
-            string.format("ACTIVE (%d/%d connected)", state.clients, state.maxClients)
+            tr("panel.status_active", {
+              clients = tostring(state.clients),
+              max = tostring(state.maxClients)
+            })
           else
             tr("panel.status_off"),
           fontSize = 11,
@@ -295,7 +298,12 @@ function render()
     -- Auto-detect note & refresh
     ui.row({ align = "center", justify = "space_between" }, {
       ui.label({
-        text = state.autoDetectedInfo ~= "" and state.autoDetectedInfo or state.statusMessage,
+        text = if state.autoDetectedInfo ~= "" then
+          state.autoDetectedInfo
+        elseif state.statusMessage ~= "" then
+          state.statusMessage
+        else
+          tr("panel.status_ready"),
         fontSize = 11,
         color = "on_surface/0.5"
       }),
@@ -400,7 +408,7 @@ function toggleHotspot()
       state.starting = false
       if res.exitCode == 0 then
         state.active = true
-        state.statusMessage = string.format("Hotspot active (%s, ch %s)", state.band, state.channel)
+        state.statusMessage = tr("panel.status_active_fmt", { band = state.band, channel = state.channel })
         noctalia.state.set("share_wifi_status", {
           active = true,
           starting = false,
@@ -427,7 +435,7 @@ function toggleHotspot()
             errMsg = res.stderr
           end
         end
-        state.statusMessage = "Error: " .. errMsg
+        state.statusMessage = errMsg
         noctalia.notifyError(tr("notify.error_title"), errMsg)
       end
       render()

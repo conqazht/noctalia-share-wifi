@@ -2,8 +2,11 @@
 
 ACTION="${1:-status}"
 
-PID_FILE="/tmp/noctalia-share-wifi.pid"
-LOG_FILE="/tmp/noctalia-share-wifi.log"
+# Per-user runtime directory for PID and log files (avoids world-writable /tmp)
+RUN_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/noctalia-share-wifi"
+mkdir -p "$RUN_DIR" 2>/dev/null || true
+PID_FILE="$RUN_DIR/pid"
+LOG_FILE="$RUN_DIR/log"
 
 get_active_wifi() {
     nmcli -t -f active,chan,freq dev wifi list --rescan no 2>/dev/null | grep '^yes' | head -n1 || true
@@ -18,43 +21,51 @@ run_root() {
     fi
 }
 
-stop_hotspot() {
+# Read and validate PID from file. Returns a validated PID or empty string.
+read_pid() {
     local pid=""
     if [ -f "$PID_FILE" ]; then
         pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
     fi
-
-    if [ -z "$pid" ] || [ ! -d "/proc/$pid" ]; then
-        local pgrep_pid
-        pgrep_pid=$(pgrep -f "create_ap.*(wlan0|ap0)" | head -n1 || true)
-        [ -n "$pgrep_pid" ] && pid="$pgrep_pid"
+    # Must be a bare positive integer
+    case "$pid" in
+        ''|*[!0-9]*) echo ""; return ;;
+    esac
+    # Verify the process is actually create_ap (cmdline is world-readable)
+    if [ -d "/proc/$pid" ] && grep -qsz 'create_ap' "/proc/$pid/cmdline" 2>/dev/null; then
+        echo "$pid"
+    else
+        echo ""
     fi
+}
 
-    if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+stop_hotspot() {
+    local pid
+    pid=$(read_pid)
+
+    if [ -n "$pid" ]; then
         run_root create_ap --stop "$pid" >/dev/null 2>&1 || run_root kill -USR1 "$pid" >/dev/null 2>&1 || true
     elif iw dev ap0 info >/dev/null 2>&1; then
         run_root create_ap --stop ap0 >/dev/null 2>&1 || true
     fi
 
-    # Wait up to 4s for ap0 to actually be dismantled and process to exit
+    # Wait up to 4s for ap0 to be dismantled and the validated process to exit
     local count=0
-    while (iw dev ap0 info >/dev/null 2>&1 || ([ -n "$pid" ] && [ -d "/proc/$pid" ])) && [ $count -lt 40 ]; do
+    while [ $count -lt 40 ]; do
+        pid=$(read_pid)
+        if ! iw dev ap0 info >/dev/null 2>&1 && [ -z "$pid" ]; then
+            break
+        fi
         sleep 0.1
         count=$((count + 1))
     done
 
-    # Force cleanup only if interface or process is still stubbornly present after 4s
-    if iw dev ap0 info >/dev/null 2>&1 || ([ -n "$pid" ] && [ -d "/proc/$pid" ]); then
-        if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
-            run_root kill -9 "$pid" >/dev/null 2>&1 || true
-        fi
-        run_root pkill -9 -f "create_ap.*(wlan0|ap0)" >/dev/null 2>&1 || true
-        if iw dev ap0 info >/dev/null 2>&1; then
-            run_root iw dev ap0 del >/dev/null 2>&1 || true
-        fi
+    # Force cleanup: only remove the virtual interface as last resort (no process signalling)
+    if iw dev ap0 info >/dev/null 2>&1; then
+        run_root iw dev ap0 del >/dev/null 2>&1 || true
     fi
 
-    rm -f "$PID_FILE" 2>/dev/null || true
+    rm -f "$PID_FILE" "$LOG_FILE" 2>/dev/null || true
 }
 
 case "$ACTION" in
@@ -159,7 +170,6 @@ case "$ACTION" in
 
         # Wait up to 6s for daemon to initialize and create ap0
         started=false
-        local pid=""
         for i in $(seq 1 60); do
             sleep 0.1
             if iw dev ap0 info >/dev/null 2>&1; then
@@ -169,10 +179,12 @@ case "$ACTION" in
 
             # Check if PID file was created and daemon died prematurely
             if [ -f "$PID_FILE" ]; then
-                pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
-                if [ -n "$pid" ] && [ ! -d "/proc/$pid" ]; then
-                    break
-                fi
+                local raw_pid
+                raw_pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
+                case "$raw_pid" in
+                    ''|*[!0-9]*) ;;
+                    *) [ ! -d "/proc/$raw_pid" ] && break ;;
+                esac
             fi
 
             # Check if log file recorded a fatal error
