@@ -275,7 +275,6 @@ case "$ACTION" in
                 stable=true
                 for j in $(seq 1 15); do
                     sleep 0.1
-                    local check_pid
                     check_pid=$(read_pid)
                     if [ -n "$check_pid" ] && [ ! -d "/proc/$check_pid" ]; then
                         stable=false
@@ -299,7 +298,6 @@ case "$ACTION" in
 
             # Check if PID file was created and daemon died prematurely
             if [ -f "$PID_FILE" ]; then
-                local raw_pid
                 raw_pid=$(cat "$PID_FILE" 2>/dev/null | tr -d ' \n\r' || true)
                 case "$raw_pid" in
                     ''|*[!0-9]*) ;;
