@@ -63,7 +63,8 @@ Inside the panel:
 - **Frequency band**: Choose `Auto`, `5Ghz`, or `2.4Ghz`.
 - **Channel**: Specify an exact channel number or leave blank for Auto.
 - **Max clients (1 - 8)**: Set a connection limit (default `2`, maximum `8`) to prevent laptop Wi-Fi hardware saturation.
-- **Auto-detection**: Automatically detects your current active Wi-Fi channel and frequency band, with a manual refresh button (`refresh`).
+- **Auto-detection & DFS Warning**: Automatically detects your current active Wi-Fi channel and frequency band. If a 5GHz DFS radar channel (channels 52–144) is detected, the plugin alerts you to switch to 2.4GHz or non-DFS channels to prevent hostapd driver crashes.
+- **Mesh Session Locking**: During active hotspot sharing, the plugin temporarily locks the active NetworkManager Wi-Fi connection profile to the current BSSID/band. This prevents mesh networks from abruptly disconnecting your laptop via 802.11v Band Steering or AP roaming. When the hotspot stops, original settings are automatically restored.
 
 ### Shortcut
 
@@ -74,4 +75,4 @@ Add `shortcut` to your Control Center in Noctalia Settings for quick toggling.
 - **Simultaneous Wi-Fi & Hotspot**: Uses Linux kernel virtual interface `ap0` on top of your physical Wi-Fi interface (`wlan0`), allowing your laptop to remain connected to the internet while simultaneously sharing it.
 - **Client Limit**: Enforced at the 802.11 MAC management frame level via `hostapd` (`max_num_sta`).
 - **Configuration & Persistence**: Hotspot credentials and preferences (SSID, passphrase, frequency band, channel, max clients) are persisted in `config.json` inside the plugin's data directory upon starting the hotspot so they do not need to be re-entered. If no saved configuration exists on initial launch, defaults are pre-populated from `/etc/create_ap.conf` if present on the system.
-- **Credential Storage**: The WPA2 passphrase is stored in **cleartext** in the plugin's data directory (`config.json`). The file is readable only by the current user (located in `$XDG_DATA_HOME/noctalia/plugins/share-wifi/`). If this is a concern, delete `config.json` after stopping the hotspot.
+- **Credential Storage**: The WPA2 passphrase is stored in **cleartext** in the plugin's data directory (`$XDG_STATE_HOME/noctalia/plugins/data/conqazht/share-wifi/config.json` or `~/.local/state/noctalia/...`). If this is a concern, delete `config.json` after stopping the hotspot.

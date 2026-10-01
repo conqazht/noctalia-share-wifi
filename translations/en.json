@@ -2,8 +2,7 @@
   "shortcut": {
     "label": "Share WiFi",
     "sharing": "Sharing",
-    "connected": "{count} connected",
-    "off": "Off"
+    "connected": "{count} connected"
   },
   "panel": {
     "title": "Share WiFi",
