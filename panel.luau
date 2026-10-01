@@ -356,28 +356,30 @@ function render()
     }))
   end
 
-  -- Toggle Hotspot Button: Always retains proper button frame
-  table.insert(items, ui.button({
-    key = "btn_toggle",
-    text = if state.starting then
-      tr("panel.btn_starting")
-    elseif state.stopping then
-      tr("panel.btn_stopping")
-    elseif state.active then
-      tr("panel.btn_stop")
-    else
-      tr("panel.btn_start"),
-    variant = if (state.starting or state.stopping) then
-      "ghost"
-    elseif state.active then
-      "destructive"
-    else
-      "primary",
-    enabled = not (state.starting or state.stopping),
-    onClick = function()
-      toggleHotspot()
-    end
-  }))
+  -- Toggle Hotspot Button: hide completely if blocked by DFS to keep panel compact
+  if not isDfsBlocked then
+    table.insert(items, ui.button({
+      key = "btn_toggle",
+      text = if state.starting then
+        tr("panel.btn_starting")
+      elseif state.stopping then
+        tr("panel.btn_stopping")
+      elseif state.active then
+        tr("panel.btn_stop")
+      else
+        tr("panel.btn_start"),
+      variant = if (state.starting or state.stopping) then
+        "ghost"
+      elseif state.active then
+        "destructive"
+      else
+        "primary",
+      enabled = not (state.starting or state.stopping),
+      onClick = function()
+        toggleHotspot()
+      end
+    }))
+  end
 
   panel.render(ui.column({ gap = 10, padding = 16 }, items))
 end
