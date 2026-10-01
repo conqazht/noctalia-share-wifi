@@ -32,7 +32,7 @@
     "status_active_fmt": "Hotspot active ({band}, ch {channel})",
     "detected_wifi": "Detected Wi-Fi: {band} (ch {channel})",
     "detected_wifi_dfs": "Detected Wi-Fi: {band} (ch {channel} - DFS)",
-    "dfs_warning": "Channel {channel} is a DFS radar channel. Cannot broadcast hotspot. Switch to 2.4GHz or ch 36-48 & Rescan.",
+    "dfs_warning": "Channel {channel} is a DFS radar channel.\nPlease switch to 2.4GHz or ch 36-48, then Rescan.",
     "no_wifi": "No active Wi-Fi (Ethernet mode)",
     "synced_status": "Synced with connected Wi-Fi"
   },

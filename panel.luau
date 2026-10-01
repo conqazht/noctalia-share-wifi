@@ -312,8 +312,9 @@ function render()
           state.statusMessage
         else
           tr("panel.status_ready"),
-        fontSize = 11,
-        color = if state.isDfs and not state.active then "error" else "on_surface/0.5"
+        fontSize = 12,
+        fontWeight = "medium",
+        color = if state.isDfs and not state.active then "error" else "on_surface/0.6"
       }),
       ui.button({
         key = "btn_rescan",
@@ -332,27 +333,30 @@ function render()
     })
   }
 
-  -- If DFS channel detected and hotspot is off, show clear warning box
+  -- If DFS channel detected and hotspot is off, show clear multi-line warning box
   local isDfsBlocked = not state.active and state.isDfs and (state.band == "5Ghz" or state.band == "Auto")
   if isDfsBlocked then
     table.insert(items, ui.row({
       fill = "error/0.15",
-      radius = 6,
-      paddingH = 10,
-      paddingV = 6,
-      gap = 6,
+      radius = 8,
+      paddingH = 12,
+      paddingV = 8,
+      gap = 8,
       align = "center"
     }, {
-      ui.glyph({ name = "alert-circle", size = 16, color = "error" }),
+      ui.glyph({ name = "alert-circle", size = 18, color = "error" }),
       ui.label({
         text = tr("panel.dfs_warning", { channel = tostring(state.channel) }),
-        fontSize = 11,
-        color = "error"
+        fontSize = 12,
+        fontWeight = "medium",
+        color = "error",
+        multiline = true,
+        maxWidth = 265
       })
     }))
   end
 
-  -- Toggle Hotspot Button
+  -- Toggle Hotspot Button: Always retains proper button frame
   table.insert(items, ui.button({
     key = "btn_toggle",
     text = if state.starting then
@@ -367,12 +371,9 @@ function render()
       "ghost"
     elseif state.active then
       "destructive"
-    elseif isDfsBlocked then
-      "ghost"
     else
       "primary",
-    enabled = not (state.starting or state.stopping or isDfsBlocked),
-    tooltip = if isDfsBlocked then tr("notify.dfs_error", { channel = tostring(state.channel) }) else nil,
+    enabled = not (state.starting or state.stopping),
     onClick = function()
       toggleHotspot()
     end
